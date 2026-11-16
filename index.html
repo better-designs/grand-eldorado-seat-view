@@ -1,0 +1,1134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Grand Eldorado seat view</title>
+<style>
+  :root {
+    --bg: oklch(0.14 0.004 285);
+    --page: oklch(0.09 0.003 285);
+    --ink: oklch(0.96 0.005 90);
+    --muted: oklch(0.74 0.008 285);
+    --faint: oklch(0.62 0.008 285);
+    --line: oklch(1 0 0 / 0.1);
+    --well: oklch(0.19 0.005 285);
+    --raised: oklch(0.27 0.006 285);
+    --outline: oklch(0.36 0.006 285);
+    --green: oklch(0.81 0.12 160);
+    --green-ink: oklch(0.2 0.04 160);
+    --top-h: 12.5rem;
+    --bar-h: 8rem;
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--page); color: var(--ink);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased; display: grid; place-items: center; overflow: hidden;
+  }
+  button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: oklch(0.81 0.12 160 / 0.2); }
+  button:focus-visible { outline: 0.125rem solid var(--green); outline-offset: 0.1875rem; }
+
+  /* Phone layout first; desktop gets its own layout below. */
+  .phone {
+    position: relative; width: min(100vw, 24.375rem); height: min(100dvh, 52.875rem);
+    background: var(--bg); border-radius: 2.75rem; overflow: hidden;
+    box-shadow: 0 0 0 0.0625rem var(--line), 0 2.5rem 5rem oklch(0 0 0 / 0.5);
+    user-select: none; -webkit-user-select: none;
+  }
+  @media (max-width: 30rem) { .phone { border-radius: 0; box-shadow: none; } }
+
+  #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; transition: opacity 180ms ease-out; touch-action: none; }
+  .phone[data-state="map"] #gl, .phone[data-state="view"] #gl { cursor: grab; }
+  .phone[data-drag] #gl, .phone[data-state="view"] #gl:active { cursor: grabbing; }
+
+  .layer { position: absolute; inset: 0; pointer-events: none; }
+  .layer > * { pointer-events: auto; }
+
+  /* Header: the title, one supporting line, then the film and showtime switchers. */
+  .top {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 2; padding: 1.5rem 1rem 1rem;
+    background: linear-gradient(var(--bg) calc(100% - 0.75rem), oklch(0.14 0.004 285 / 0));
+  }
+  .top h1 { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.015em; line-height: 1.2; }
+  .top .where-at { font-size: 0.75rem; color: var(--muted); margin-top: 0.25rem; }
+  .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem; padding: 0.25rem; margin-top: 1rem; background: var(--well); border-radius: 0.875rem; }
+  .seg button {
+    min-height: 2.75rem; padding: 0.5rem; border-radius: 0.625rem; display: grid; place-items: center; text-align: center;
+    font-size: 0.9375rem; font-weight: 600; color: var(--muted); line-height: 1.25;
+  }
+  .seg button small { display: block; font-size: 0.75rem; font-weight: 400; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .seg button[aria-checked="true"] { background: var(--raised); color: var(--ink); box-shadow: 0 0 0 0.03125rem var(--outline), 0 0.0625rem 0.125rem oklch(0 0 0 / 0.5); }
+  .seg button[aria-checked="true"] small { color: var(--muted); }
+  .times { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+  .times button {
+    flex: 1; max-width: 7.5rem; min-height: 2.75rem; padding: 0.25rem 0.75rem; border-radius: 0.75rem;
+    display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
+    box-shadow: inset 0 0 0 0.0625rem var(--outline); font-size: 0.9375rem; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2;
+  }
+  .times button small { font-size: 0.75rem; font-weight: 400; color: var(--muted); letter-spacing: 0.01em; }
+  .times button[aria-checked="true"] { background: var(--ink); color: oklch(0.15 0 0); box-shadow: none; }
+  .times button[aria-checked="true"] small { color: oklch(0.38 0 0); }
+
+  /* The map region sits over the canvas: it draws row letters and the tooltip; pointer input goes to the 3D model. */
+  .map { position: absolute; top: var(--top-h); bottom: var(--bar-h); left: 0; right: 0; overflow: hidden; }
+  .layer > .map { pointer-events: none; }
+  /* The seat list stays in the DOM for keyboards and screen readers; focus shows as a ring in the 3D model. */
+  .plan { position: absolute; width: 0.0625rem; height: 0.0625rem; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .rl { position: absolute; left: 0; top: 0; font-size: 0.6875rem; font-weight: 600; color: var(--faint); transform: translate(-50%, -50%); }
+  .rl[hidden] { display: none; }
+  .tip {
+    position: absolute; left: 0; top: 0; z-index: 4; padding: 0.5rem 0.75rem; border-radius: 0.625rem;
+    background: oklch(0.97 0.004 90); color: oklch(0.18 0.006 285); font-size: 0.75rem; line-height: 1.3; white-space: nowrap;
+    box-shadow: 0 0.25rem 1rem oklch(0 0 0 / 0.35), 0 0.0625rem 0.125rem oklch(0 0 0 / 0.3);
+    opacity: 0; pointer-events: none;
+  }
+  .tip strong { display: block; font-size: 0.8125rem; font-weight: 600; }
+  .tip span { color: oklch(0.42 0.01 285); font-variant-numeric: tabular-nums; }
+  .tip::after { content: ""; position: absolute; left: var(--arrow-x, 50%); bottom: -0.3125rem; width: 0.625rem; height: 0.625rem; margin-left: -0.3125rem; background: inherit; rotate: 45deg; border-radius: 0.125rem; }
+  .tip[data-below="true"]::after { bottom: auto; top: -0.3125rem; }
+  .tip.on { opacity: 1; }
+
+  /* The slot under the map: the key, then the prompt or the chosen seat, then the price. Its height never changes. */
+  .credit { position: absolute; top: 1.5rem; right: 1rem; margin: 0; font-size: 0.6875rem; color: var(--muted); }
+  .credit a { color: inherit; text-decoration: underline; text-underline-offset: 0.125rem; }
+  .bar {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;
+    padding: 1rem 1rem max(1rem, env(safe-area-inset-bottom));
+    background: oklch(0.17 0.005 285); border-radius: 1.5rem 1.5rem 0 0; box-shadow: 0 -0.0625rem 0 var(--line);
+  }
+  .legend { display: flex; gap: 1.5rem; list-style: none; padding: 0; font-size: 0.75rem; color: var(--faint); }
+  .legend li { display: flex; align-items: center; gap: 0.5rem; }
+  /* Swatches coloured like the seats on the map: light, dark, green. */
+  .sw { width: 0.875rem; height: 0.875rem; border-radius: 0.25rem; display: block; }
+  .sw.a { background: oklch(0.82 0.015 285); }
+  .sw.t { background: oklch(0.32 0.008 285); }
+  .sw.s { background: oklch(0.78 0.13 160); }
+  .status { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.75rem; padding-top: 0.75rem; box-shadow: 0 -0.03125rem 0 var(--line); height: 4.25rem; }
+  .pick { flex: 1; min-width: 0; }
+  .status .what { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.015em; line-height: 1.2; }
+  .status .what.hint { font-size: 0.9375rem; display: flex; align-items: center; gap: 0.5rem; letter-spacing: 0; }
+  .status .what.hint svg { width: 1rem; height: 1rem; flex: none; color: var(--green); }
+  .status .sub2 { font-size: 0.75rem; color: var(--muted); margin-top: 0.25rem; min-height: 0.9375rem; font-variant-numeric: tabular-nums; }
+  .facts { font-size: 0.75rem; color: var(--muted); margin-top: 0.5rem; font-variant-numeric: tabular-nums; }
+  .zoom {
+    flex: none; padding: 0; width: 2.75rem; height: 2.75rem; display: grid; place-items: center; border-radius: 62rem; color: var(--ink);
+    background: var(--raised); box-shadow: 0 0 0 0.03125rem var(--outline), 0 0.0625rem 0.125rem oklch(0 0 0 / 0.5);
+  }
+  .zoom svg { width: 1.125rem; height: 1.125rem; }
+  .cta { flex: none; min-height: 2.75rem; padding: 0 1.25rem; white-space: nowrap; border-radius: 62rem; background: var(--green); color: var(--green-ink); font-size: 0.875rem; font-weight: 600; }
+  .cta[hidden] { display: none; }
+
+  /* View from the seat */
+  #viewUi { opacity: 0; }
+  #viewUi.on { opacity: 1; }
+  .back {
+    position: absolute; top: 1.25rem; left: 1rem; min-width: 2.75rem; height: 2.75rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+    border-radius: 62rem; background: oklch(0.12 0.004 285 / 0.72); backdrop-filter: blur(0.75rem); -webkit-backdrop-filter: blur(0.75rem);
+  }
+  .back svg { width: 1rem; height: 1rem; }
+  .back span { display: none; }
+  .sheet {
+    position: absolute; left: 0; right: 0; bottom: 0; padding: 1.75rem 1.25rem max(1.25rem, env(safe-area-inset-bottom));
+    background: oklch(0.17 0.008 20 / 0.94); border-radius: 1.5rem 1.5rem 0 0;
+    backdrop-filter: blur(1rem); -webkit-backdrop-filter: blur(1rem); transform: translateY(105%);
+  }
+  .sheet::before { content: ""; position: absolute; top: 0.625rem; left: 50%; width: 2.25rem; height: 0.1875rem; margin-left: -1.125rem; border-radius: 62rem; background: oklch(1 0 0 / 0.22); }
+  #viewUi.on .sheet { transform: none; }
+  .sheet .head2 { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+  .sheet h2 { font-size: 1.375rem; font-weight: 600; letter-spacing: -0.02em; }
+  .sheet h2:focus { outline: none; }
+  .tag { font-size: 0.75rem; font-weight: 600; color: var(--green); margin-top: 0.25rem; }
+  .sub { font-size: 0.75rem; color: var(--muted); margin-top: 0.125rem; font-variant-numeric: tabular-nums; }
+  .mini { width: 4.5rem; height: 3.75rem; flex: none; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.375rem; margin-top: 1rem; }
+  .stats div { background: oklch(1 0 0 / 0.05); border-radius: 0.75rem; padding: 0.625rem 0.75rem; display: flex; flex-direction: column-reverse; }
+  .stats dd { font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .stats dt { font-size: 0.6875rem; color: var(--muted); margin-top: 0.125rem; }
+  .acts { display: flex; gap: 0.5rem; margin-top: 1rem; }
+  .acts button { min-height: 2.75rem; padding: 0 1rem; border-radius: 62rem; font-size: 0.875rem; font-weight: 600; }
+  .solid { flex: 1; background: var(--ink); color: oklch(0.15 0 0); font-variant-numeric: tabular-nums; }
+  .fine { font-size: 0.6875rem; color: var(--muted); margin-top: 0.625rem; text-align: center; }
+
+  /* Desktop is its own layout: full frame, the header and switchers in one row, the map filling the rest. */
+  @media (min-width: 48rem) {
+    body { display: block; }
+    .phone { width: 100vw; height: 100dvh; border-radius: 0; box-shadow: none; }
+    .top { display: flex; align-items: center; gap: 2rem; padding: 1rem 1.5rem; background: var(--bg); box-shadow: 0 0.03125rem 0 var(--line); }
+    .titles { flex: 1; min-width: 0; }
+    .top h1 { font-size: 2rem; font-weight: 650; letter-spacing: -0.025em; }
+    .top .where-at { font-size: 1rem; margin-top: 0.25rem; }
+    .seg { margin-top: 0; width: 24rem; flex: none; }
+    .times { margin-top: 0; flex: none; }
+    .times button { width: 6.5rem; flex: none; }
+    .bar { height: 5rem; padding: 0 1.5rem; border-radius: 0; display: grid; grid-template-columns: auto 1fr auto; align-items: center; column-gap: 2rem; }
+    .bar .status { margin-top: 0; padding: 0 2rem; height: 3.5rem; box-shadow: -0.03125rem 0 0 var(--line), 0.03125rem 0 0 var(--line); }
+    .facts { margin-top: 0; font-size: 0.9375rem; color: var(--ink); font-weight: 600; }
+    .zoom { position: fixed; top: calc(var(--top-h) + 1rem); right: 1.5rem; z-index: 3; }
+    .back { padding: 0 1.125rem 0 0.875rem; font-size: 0.875rem; font-weight: 600; top: 1.5rem; left: 1.5rem; }
+    .back span { display: inline; }
+    .sheet { left: 1.5rem; right: auto; bottom: 1.5rem; width: 24rem; border-radius: 1.5rem; }
+  }
+
+  /* States: rest, hover, focus (ring outside), pressed, selected. Hover only where a fine pointer can hover. */
+  button:active:not([aria-disabled="true"]) { scale: 0.97; }
+  @media (hover: hover) and (pointer: fine) {
+    .seg button:not([aria-checked="true"]):hover { color: var(--ink); background: oklch(1 0 0 / 0.04); }
+    .times button:not([aria-checked="true"]):hover { box-shadow: inset 0 0 0 0.0625rem oklch(0.5 0.008 285); background: oklch(1 0 0 / 0.04); }
+    .back:hover { background: oklch(0.12 0.004 285 / 0.88); }
+    .zoom:hover { background: oklch(0.31 0.006 285); }
+    .cta:hover { background: oklch(0.85 0.12 160); }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    button { transition: scale 150ms var(--ease-out), background-color 160ms var(--ease-out), color 160ms var(--ease-out), box-shadow 160ms var(--ease-out); }
+    #viewUi { transition: opacity 200ms ease-out; }
+    .tip { transition: opacity 120ms var(--ease-out); }
+    .sheet { transition: transform 200ms ease-in; }
+    #viewUi.on .sheet { transition: transform 320ms var(--ease-drawer); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sheet { transform: none; }
+    #viewUi { transition: opacity 180ms ease-out; }
+  }
+</style>
+</head>
+<body>
+<main class="phone" id="phone" data-state="map" data-zoom="overview">
+  <canvas id="gl" aria-hidden="true"></canvas>
+
+  <section class="layer" id="mapUi" aria-label="Choose a seat">
+    <div class="top">
+      <div class="titles">
+        <h1>Pick a seat, see your view</h1>
+        <p class="where-at">Grand Eldorado, UGC De Brouckère, Wed 16 Dec</p>
+      </div>
+      <div class="seg" role="radiogroup" aria-label="Film" id="films"></div>
+      <div class="times" role="radiogroup" aria-label="Showtime" id="times"></div>
+    </div>
+
+    <div class="map" id="map">
+      <div class="plan" id="plan" role="group" aria-label="Seats in the hall, the screen is at the top"></div>
+    </div>
+    <div class="bar" id="bar">
+      <ul class="legend" aria-label="Seat key">
+        <li><span class="sw a"></span>Free</li>
+        <li><span class="sw t"></span>Taken</li>
+        <li><span class="sw s"></span>Your seat</li>
+      </ul>
+      <div class="status">
+        <div class="pick" aria-live="polite">
+          <p class="what" id="what"></p>
+          <p class="sub2" id="sub2"></p>
+        </div>
+        <button class="zoom" id="zoom" type="button"></button>
+        <button class="cta" id="see" type="button" hidden>See the view</button>
+      </div>
+      <p class="facts" id="facts"></p>
+    </div>
+  </section>
+
+  <section class="layer" id="viewUi" aria-label="View from your seat" inert>
+    <button class="back" id="back" type="button" aria-label="Back to the seat map">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3 5 8l5 5"/></svg><span>Back to the map</span>
+    </button>
+    <div class="sheet">
+      <div class="head2">
+        <div>
+          <h2 id="seatName" tabindex="-1"></h2>
+          <p class="tag" id="tag"></p>
+          <p class="sub" id="seatSub"></p>
+        </div>
+        <svg class="mini" id="mini" aria-hidden="true"></svg>
+      </div>
+      <dl class="stats">
+        <div><dt>to the screen</dt><dd id="sDist"></dd></div>
+        <div><dt>screen angle</dt><dd id="sFov"></dd></div>
+        <div><dt id="sSideL"></dt><dd id="sSide"></dd></div>
+      </dl>
+      <div class="acts">
+        <button class="solid" id="pick" type="button">Select this seat</button>
+      </div>
+      <p class="fine">Demo only, nothing is booked.</p>
+    </div>
+      <p class="credit">Wall reliefs from photos by <a href="https://commons.wikimedia.org/wiki/Category:UGC_De_Brouck%C3%A8re" target="_blank" rel="noreferrer">AdriMela</a>, <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noreferrer">CC BY-SA 4.0</a></p>
+  </section>
+</main>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const $ = (id) => document.getElementById(id);
+const phone = $('phone'), canvas = $('gl'), mapUi = $('mapUi'), viewUi = $('viewUi'), mapEl = $('map'), plan = $('plan');
+const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+
+/* ---------- Films and showtimes, Grand Eldorado, Wed 16 Dec 2026 ---------- */
+
+const FILMS = [
+  { title: 'Avengers: Doomsday', runtime: '2h45', format: 'Infinity Vision', def: 2, shows: [
+    { time: '00:05', v: 'VOSTBIL', taken: 260, seed: 11 },
+    { time: '13:00', v: 'VF', taken: 150, seed: 23 },
+    { time: '20:00', v: 'VOSTBIL', taken: 547, seed: 37, real: true },
+  ] },
+  { title: 'Dune: Part Three', runtime: '2h20', def: 0, shows: [
+    { time: '16:30', v: 'VOSTBIL', taken: 310, seed: 53 },
+  ] },
+];
+// 15,25 € full price plus 1,00 € for films over 2h10: the same for both films and every seat.
+const PRICE = 16.25;
+const money = (n) => new Intl.NumberFormat('fr-BE', { style: 'currency', currency: 'EUR' }).format(n);
+
+/* ---------- The real seat plan: 706 seats, stalls A to V, balcony a to f ----------
+   Numbering runs from the right (1) to the left, as on the cinema's own map.
+   Rows S to V and the balcony blocks are read from the map (ref/ugc-seatmap-doomsday-2000.txt).
+   Rows A to R are fitted so the hall adds up to its real 706 seats. */
+const PITCH = 0.5, CURVE = 0.012;
+const range = (a, b, skip = []) => { const o = []; for (let n = a; n <= b; n++) if (!skip.includes(n)) o.push(n); return o; };
+const STALLS = 'ABCDEFGHIJKLMNOPQRSTUV'.split(''), BALC = 'abcdef'.split('');
+function stallNums(L) {
+  if ('ABCD'.includes(L)) return [...range(1, 10), ...range(23, 32)];
+  if ('EFGHIV'.includes(L)) return range(5, 28);
+  if (L === 'R') return range(2, 31);
+  if ('STU'.includes(L)) return range(1, 32);
+  return range(3, 30);
+}
+// Booking-map units: 35 per seat, an aisle after seat 6 and after seat 26 (rows E to V).
+function stallX(L, n) {
+  if ('ABCD'.includes(L)) return (16.5 - n) * PITCH;
+  const u = 1160 - 35 * (n - 1) - (n >= 7 ? 35 : 0) - (n >= 27 ? 35 : 0);
+  return (u - 582.5) / 35 * PITCH;
+}
+function balcNums(L) {
+  if (L === 'a') return range(10, 22, [21]);
+  if (L === 'b') return [...range(5, 9), ...range(10, 22, [21]), ...range(23, 27)];
+  if (L === 'e') return range(3, 29);
+  if (L === 'f') return [...range(3, 10), ...range(12, 20), ...range(22, 29)];
+  return range(5, 27);
+}
+const balcX = (L, n) => (16 - n) * PITCH + ('bcde'.includes(L) ? (n <= 9 ? 0.4 : n >= 23 ? -0.4 : 0) : 0);
+// Real taken seats, Avengers: Doomsday, 20:00, read 13 Nov 2026.
+const REAL = { S: [...range(3, 14), ...range(16, 29)], T: range(7, 26), U: range(13, 22), V: range(15, 20) };
+
+/* ---------- Hall (metres). Screen at z = 0, seats face -z. ---------- */
+const SCREEN = { w: 9.6, h: 4.1, y: 4.3 };
+const HW = 9.4, HZ0 = 3.5, HZ1 = 26.2, WALL_H = 9.6, CEIL = 10.8;
+const BAL = { y: 6.95, top: 8.05, z: (x) => 18.4 + 1.1 * (1 - (x / HW) ** 2) };
+const rowZ = (r) => 5.4 + r * 0.86, rowY = (r) => r * 0.13;
+const MAP_ROW = 0.36, MAP_BAL = STALLS.length * MAP_ROW + 1.0;
+
+const seats = [], rows = [];
+STALLS.forEach((L, r) => {
+  const row = { L, i: rows.length, seats: [] }; rows.push(row);
+  for (const n of stallNums(L)) {
+    const x = stallX(L, n), z = rowZ(r) + CURVE * x * x;
+    const st = { i: seats.length, row: row.i, L, n, x, y: rowY(r), z, yaw: Math.atan2(x, z + 6), mx: x, mz: r * MAP_ROW,
+      code: L + n, name: `Row ${L}, seat ${n}`, area: 'Stalls' };
+    seats.push(st); row.seats.push(st);
+  }
+});
+BALC.forEach((L, k) => {
+  const row = { L, i: rows.length, seats: [] }; rows.push(row);
+  for (const n of balcNums(L)) {
+    const x = balcX(L, n), z = BAL.z(x) + 0.8 + k * 0.92;
+    const st = { i: seats.length, row: row.i, L, n, x, y: BAL.y + 0.4 + k * 0.42, z, yaw: Math.atan2(x, z + 6), mx: x, mz: MAP_BAL + k * MAP_ROW,
+      code: L + n, name: `Balcony row ${L}, seat ${n}`, area: 'Balcony' };
+    seats.push(st); row.seats.push(st);
+  }
+});
+rows.forEach((r) => r.seats.sort((a, b) => a.x - b.x)); // screen left to right
+const N = seats.length; // 706
+const X0 = -9.2, X1 = 9.2, Z0 = -1.15, Z1 = MAP_BAL + 5 * MAP_ROW + 0.3;
+
+/* ---------- Taken seats per show. Rows S to V of the 20:00 show are real; the rest are simulated. ---------- */
+function rng(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const takenCache = new Map();
+function takenFor(show) {
+  if (takenCache.has(show)) return takenCache.get(show);
+  const set = new Set(), r = rng(show.seed);
+  let pool = seats;
+  if (show.real) {
+    for (const st of seats) if (REAL[st.L] && REAL[st.L].includes(st.n)) set.add(st.i);
+    pool = seats.filter((st) => !REAL[st.L]);
+  }
+  // People fill the middle of the hall first.
+  const score = (st) => r() * 0.75 + 0.25 * (1 - Math.min(1, Math.abs(st.x) / 8)) + (st.area === 'Stalls' && st.mz > 4 && st.mz < 11 ? 0.12 : 0);
+  pool.map((st) => [score(st), st.i]).sort((a, b) => b[0] - a[0]).slice(0, show.taken - set.size).forEach(([, i]) => set.add(i));
+  takenCache.set(show, set); return set;
+}
+let film = 0, showIdx = FILMS[0].def, selected = -1, marked = -1, hovered = -1;
+const curShow = () => FILMS[film].shows[showIdx];
+const taken = () => takenFor(curShow());
+
+/* ---------- Renderer and scene ---------- */
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+const BG = new THREE.Color('#0e0e11');
+const scene = new THREE.Scene();
+scene.background = BG.clone();
+const camera = new THREE.PerspectiveCamera(20, 0.46, 0.1, 200);
+const pmrem = new THREE.PMREMGenerator(renderer);
+const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+const hemi = new THREE.HemisphereLight('#ffb24d', '#140a04', 0);
+const house = new THREE.DirectionalLight('#ffc878', 0); house.position.set(2, 9, 22);
+const glow = new THREE.PointLight('#f1d3aa', 0, 0, 1.1); glow.position.set(0, SCREEN.y, 1.2);
+scene.add(hemi, house, house.target, glow);
+const LIGHTS = [[hemi, 0.32], [house, 0.5], [glow, 26]];
+
+// The film: an original dune still, drawn here.
+function filmTexture() {
+  const c = document.createElement('canvas'); c.width = 1440; c.height = 600;
+  const g = c.getContext('2d');
+  let s = g.createLinearGradient(0, 0, 0, 360);
+  s.addColorStop(0, '#b9a995'); s.addColorStop(0.7, '#e3d3bd'); s.addColorStop(1, '#efe4d2');
+  g.fillStyle = s; g.fillRect(0, 0, 1440, 600);
+  s = g.createRadialGradient(980, 300, 0, 980, 300, 520);
+  s.addColorStop(0, 'rgba(255,246,228,.6)'); s.addColorStop(1, 'rgba(255,246,228,0)');
+  g.fillStyle = s; g.fillRect(0, 0, 1440, 600);
+  const dune = (pts, top, bot) => {
+    const gr = g.createLinearGradient(0, Math.min(...pts.map((p) => p[1])), 0, 600);
+    gr.addColorStop(0, top); gr.addColorStop(1, bot); g.fillStyle = gr;
+    g.beginPath(); g.moveTo(0, 600); g.lineTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) { const [x0, y0] = pts[i - 1], [x1, y1] = pts[i]; g.bezierCurveTo((x0 + x1) / 2, y0, (x0 + x1) / 2, y1, x1, y1); }
+    g.lineTo(1440, 600); g.closePath(); g.fill();
+  };
+  dune([[0, 350], [260, 338], [560, 352], [900, 336], [1200, 348], [1440, 340]], '#d9c6aa', '#cdb696');
+  dune([[0, 372], [300, 384], [620, 362], [860, 378], [1180, 356], [1440, 372]], '#cdb08a', '#b89468');
+  dune([[0, 400], [240, 420], [520, 452], [760, 400], [1010, 372], [1250, 410], [1440, 380]], '#c09a6c', '#9c774d');
+  g.fillStyle = 'rgba(88,62,40,.45)';
+  g.beginPath(); g.moveTo(1010, 372); g.bezierCurveTo(960, 430, 900, 520, 820, 600); g.lineTo(1440, 600); g.lineTo(1440, 380);
+  g.bezierCurveTo(1340, 395, 1250, 410, 1250, 410); g.bezierCurveTo(1130, 410, 1130, 372, 1010, 372); g.fill();
+  dune([[0, 500], [300, 470], [640, 540], [1000, 590], [1440, 600]], '#a8825a', '#86633f');
+  g.fillStyle = '#2b2019'; g.fillRect(668, 392, 4, 16); g.beginPath(); g.arc(670, 389, 3, 0, 7); g.fill();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
+}
+const screenMat = new THREE.MeshBasicMaterial({ map: filmTexture(), toneMapped: false, transparent: true, opacity: 0 });
+const screenGeo = new THREE.PlaneGeometry(SCREEN.w, SCREEN.h, 24, 1);
+{ const a = screenGeo.attributes.position; for (let i = 0; i < a.count; i++) a.setZ(i, 0.22 * Math.pow(a.getX(i) / (SCREEN.w / 2), 2)); }
+const screen = new THREE.Mesh(screenGeo, screenMat);
+screen.position.set(0, SCREEN.y, 0); scene.add(screen);
+
+// Floor steps. They stay black until the lights come up.
+const stepMat = new THREE.MeshStandardMaterial({ color: '#24110b', roughness: 1 });
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 60), stepMat); floor.rotation.x = -Math.PI / 2; floor.position.z = 14; scene.add(floor);
+STALLS.forEach((_, r) => { if (!r) return;
+  const m = new THREE.Mesh(new THREE.BoxGeometry(2 * HW, rowY(r), 0.86), stepMat); m.position.set(0, rowY(r) / 2, rowZ(r) + 0.05); scene.add(m); });
+
+/* ---------- The hall: Grand Eldorado, UGC De Brouckère, Brussels ----------
+   Gilded relief panels in stepped frames, lit from below; a cove of palm fans
+   over a peg band; a dark ceiling with a sunburst above the screen.
+   Relief textures: photos by AdriMela, Wikimedia Commons, CC BY-SA 4.0 (tex/CREDITS.txt). */
+const hall = new THREE.Group(); hall.visible = false; scene.add(hall);
+const hallMats = [], hallEmis = [], hallEnv = [];
+function canvasTex(w, h, draw, rx = 1, ry = 1) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  if (rx !== 1 || ry !== 1) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); }
+  return t;
+}
+function glowMat(map, extra = {}) { const m = new THREE.MeshBasicMaterial({ map, toneMapped: false, side: THREE.DoubleSide, ...extra }); hallMats.push(m); return m; }
+const withEnv = (m, v) => { m.envMap = envTex; hallEnv.push([m, v]); return m; };
+// A quad from four corners: bottom left, bottom right, top right, top left.
+function quad(bl, br, tr, tl, mat) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute([...bl, ...br, ...tr, ...tl], 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2));
+  g.setIndex([0, 1, 2, 0, 2, 3]); g.computeVertexNormals();
+  const m = new THREE.Mesh(g, mat); hall.add(m); return m;
+}
+const lin = (g, y0, y1, stops) => { const gr = g.createLinearGradient(0, y0, 0, y1); stops.forEach(([o, c]) => gr.addColorStop(o, c)); return gr; };
+
+// Plaster: a trowelled surface as a normal map, built from layered value noise.
+const plasterNormal = (() => {
+  const S = 256, c = document.createElement('canvas'); c.width = c.height = S;
+  const g = c.getContext('2d'), img = g.createImageData(S, S), h = new Float32Array(S * S);
+  const lattice = (f, seed) => { const r = rng(seed), n = f + 1, v = Array.from({ length: n * n }, r);
+    return (x, y) => { const gx = x / S * f, gy = y / S * f, ix = gx | 0, iy = gy | 0, fx = gx - ix, fy = gy - iy, sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+      const at = (a, b) => v[(b % f) * n + (a % f)]; return (at(ix, iy) * (1 - sx) + at(ix + 1, iy) * sx) * (1 - sy) + (at(ix, iy + 1) * (1 - sx) + at(ix + 1, iy + 1) * sx) * sy; }; };
+  const oct = [[8, 0.45, 3], [32, 0.35, 7], [128, 0.2, 9]].map(([f, a, s]) => [lattice(f, s), a]);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) h[y * S + x] = oct.reduce((t, [fn, a]) => t + fn(x, y) * a, 0);
+  const H = (x, y) => h[((y + S) % S) * S + (x + S) % S];
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const dx = (H(x + 1, y) - H(x - 1, y)) * 4, dy = (H(x, y + 1) - H(x, y - 1)) * 4, l = Math.hypot(dx, dy, 1), o = (y * S + x) * 4;
+    img.data[o] = (-dx / l * 0.5 + 0.5) * 255; img.data[o + 1] = (dy / l * 0.5 + 0.5) * 255; img.data[o + 2] = (1 / l * 0.5 + 0.5) * 255; img.data[o + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+})();
+const plaster = (rx, color = '#6c5127', ry = 3) => {
+  const n = plasterNormal.clone(); n.repeat.set(rx, ry); n.needsUpdate = true;
+  return withEnv(new THREE.MeshStandardMaterial({ color, roughness: 0.74, metalness: 0.22, normalMap: n, normalScale: new THREE.Vector2(0.4, 0.4), side: THREE.DoubleSide }), 0.08);
+};
+const gold = withEnv(new THREE.MeshStandardMaterial({ color: '#d2a03a', metalness: 0.85, roughness: 0.34, emissive: '#3a2406', side: THREE.DoubleSide }), 0.45);
+hallEmis.push([gold, 0.7]);
+const trim = withEnv(new THREE.MeshStandardMaterial({ color: '#a77d34', metalness: 0.6, roughness: 0.42 }), 0.35);
+const flute = canvasTex(64, 8, (g, w, h) => { for (let x = 0; x < w; x++) { const v = 128 + 110 * Math.sin(x / w * Math.PI * 10) | 0; g.fillStyle = `rgb(${v},${v},${v})`; g.fillRect(x, 0, 1, h); } });
+flute.wrapS = flute.wrapT = THREE.RepeatWrapping;
+const pierMat = withEnv(new THREE.MeshStandardMaterial({ color: '#a37b30', metalness: 0.5, roughness: 0.5, bumpMap: flute, bumpScale: 2.5 }), 0.3);
+const pegTex = canvasTex(64, 64, (g, w, h) => {
+  g.fillStyle = '#2a1a07'; g.fillRect(0, 0, w, h);
+  g.fillStyle = lin(g, 0, h, [[0, '#ffe08a'], [0.5, '#c8962e'], [1, '#6a4510']]);
+  g.beginPath(); g.roundRect(9, 4, 46, 60, [6, 6, 20, 20]); g.fill();
+}, 60, 1);
+const fanTex = canvasTex(256, 256, (g, w, h) => {
+  g.fillStyle = '#3a2408'; g.fillRect(0, 0, w, h);
+  const cx = w / 2, cy = h + 30, n = 13;
+  for (let i = 0; i < n; i++) {
+    const a0 = Math.PI * (1.08 + 0.84 * i / n), a1 = Math.PI * (1.08 + 0.84 * (i + 1) / n), R = 262 - 26 * Math.abs((i + 0.5) / n - 0.5) * 2;
+    const gr = g.createRadialGradient(cx, cy, 20, cx, cy, R); gr.addColorStop(0, '#fff6b8'); gr.addColorStop(0.45, i % 2 ? '#f2c244' : '#ffd95e'); gr.addColorStop(1, i % 2 ? '#9a6a14' : '#b88420');
+    g.fillStyle = gr; g.beginPath(); g.moveTo(cx, cy); g.arc(cx, cy, R, a0, a1); g.closePath(); g.fill();
+    g.strokeStyle = 'rgba(70,40,4,.55)'; g.lineWidth = 2; g.stroke();
+  }
+  g.fillStyle = lin(g, h - 26, h, [[0, 'rgba(255,250,200,0)'], [1, 'rgba(255,250,200,.9)']]); g.fillRect(0, h - 26, w, 26);
+}, 12, 1);
+const ceilTex = canvasTex(512, 64, (g, w, h) => {
+  g.fillStyle = '#120b05'; g.fillRect(0, 0, w, h);
+  [[18, 70], [w - 88, 70]].forEach(([x, bw]) => { for (let k = 0; k < 5; k++) { g.fillStyle = ['#5f4313', '#8a6420', '#b88a2e', '#8a6420', '#5f4313'][k]; g.fillRect(x + k * bw / 5, 0, bw / 5 - 2, h); } });
+});
+const sunTex = canvasTex(1024, 1024, (g, w) => {
+  const c = w / 2; g.translate(c, c);
+  const rays = 26;
+  for (let i = 0; i < rays; i++) {
+    g.save(); g.rotate(i / rays * Math.PI * 2);
+    const L = i % 2 ? 500 : 410, w0 = 30, w1 = i % 2 ? 54 : 40;
+    const gr = g.createLinearGradient(0, -150, 0, -L); gr.addColorStop(0, '#f1c45a'); gr.addColorStop(1, '#6f4d16');
+    g.fillStyle = gr; g.beginPath(); g.moveTo(-w0 / 2, -150); g.lineTo(-w1 / 2, -L + 40); g.lineTo(-w1 / 4, -L + 40); g.lineTo(-w1 / 4, -L); g.lineTo(w1 / 4, -L); g.lineTo(w1 / 4, -L + 40); g.lineTo(w1 / 2, -L + 40); g.lineTo(w0 / 2, -150); g.closePath(); g.fill();
+    g.strokeStyle = 'rgba(40,24,4,.5)'; g.lineWidth = 2; g.stroke(); g.restore();
+  }
+  [[250, 26, '#c79a3a'], [190, 22, '#e2b64e']].forEach(([r, lw, col]) => {
+    g.beginPath(); const n = 40; for (let i = 0; i <= n; i++) { const a = i / n * Math.PI * 2, rr = r + (i % 2 ? 16 : -16); g[i ? 'lineTo' : 'moveTo'](Math.cos(a) * rr, Math.sin(a) * rr); }
+    g.closePath(); g.lineWidth = lw; g.strokeStyle = col; g.lineJoin = 'miter'; g.stroke(); g.lineWidth = 3; g.strokeStyle = 'rgba(50,30,6,.6)'; g.stroke();
+  });
+  const d = g.createRadialGradient(0, 0, 10, 0, 0, 165); d.addColorStop(0, '#fff3b0'); d.addColorStop(0.55, '#ffb21e'); d.addColorStop(1, '#a8650c');
+  g.fillStyle = d; g.beginPath(); g.arc(0, 0, 165, 0, 7); g.fill();
+});
+const haloTex = canvasTex(128, 128, (g) => { const d = g.createRadialGradient(64, 64, 0, 64, 64, 64); d.addColorStop(0, 'rgba(255,214,120,1)'); d.addColorStop(0.35, 'rgba(255,170,50,.45)'); d.addColorStop(1, 'rgba(255,150,30,0)'); g.fillStyle = d; g.fillRect(0, 0, 128, 128); });
+const haloMat = glowMat(haloTex, { transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+const pegMat = glowMat(pegTex), fanMat = glowMat(fanTex);
+
+/* ---------- Relief maps, made from each photo crop at load, on the GPU ----------
+   1. Delit colour: the photo divided by a heavily blurred copy of itself, so the
+      hall's baked uplighting mostly goes and the scene lights do the modelling.
+   2. Height: smoothed luminance minus its low frequencies, so raised gold figures are high.
+   3. Normals: a Sobel filter over that height. A low-res copy of the height displaces the mesh. */
+const RW = 640, RH = 480;
+const fsCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), fsScene = new THREE.Scene();
+const fsQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2)); fsScene.add(fsQuad);
+const FS_VERT = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
+const LUMA = 'float luma(vec3 c){ return dot(c, vec3(0.2126, 0.7152, 0.0722)); }';
+const fsMat = (frag, uniforms) => new THREE.ShaderMaterial({ vertexShader: FS_VERT, fragmentShader: LUMA + frag, uniforms, depthTest: false, depthWrite: false });
+const rt = (w, h, o = {}) => new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, depthBuffer: false, ...o });
+function runPass(mat, target) { fsQuad.material = mat; renderer.setRenderTarget(target); renderer.render(fsScene, fsCam); renderer.setRenderTarget(null); }
+// Average luminance over each output texel (an 8x8 grid of taps).
+const downMat = fsMat(`uniform sampler2D src; uniform vec2 px; varying vec2 vUv;
+  void main(){ float s = 0.0; for (int i = 0; i < 8; i++) for (int j = 0; j < 8; j++) s += luma(texture2D(src, vUv + (vec2(i, j) - 3.5) / 8.0 * px).rgb);
+  gl_FragColor = vec4(vec3(s / 64.0), 1.0); }`, { src: { value: null }, px: { value: new THREE.Vector2() } });
+const blurMat = fsMat(`uniform sampler2D src; uniform vec2 px; uniform float rad; varying vec2 vUv;
+  void main(){ float s = 0.0, w = 0.0; for (int i = -6; i <= 6; i++) for (int j = -6; j <= 6; j++) { vec2 o = vec2(i, j); float k = exp(-dot(o, o) / (2.0 * rad * rad)); s += texture2D(src, vUv + o * px).r * k; w += k; }
+  gl_FragColor = vec4(vec3(s / w), 1.0); }`, { src: { value: null }, px: { value: new THREE.Vector2() }, rad: { value: 3 } });
+const albedoMat = fsMat(`uniform sampler2D src, low; varying vec2 vUv;
+  void main(){ vec3 c = texture2D(src, vUv).rgb; float lb = texture2D(low, vUv).r;
+  vec3 a = c * (0.4 / (lb + 0.02));
+  a = a / (1.0 + 0.35 * a);
+  float l = luma(a); a = mix(a, l * vec3(1.2, 0.86, 0.42), 0.55);
+  gl_FragColor = vec4(clamp(a, 0.0, 1.0), 1.0); }`, { src: { value: null }, low: { value: null } });
+const heightMat = fsMat(`uniform sampler2D src, low, mid; uniform vec2 px; varying vec2 vUv;
+  void main(){ float s = 0.0, w = 0.0; for (int i = -2; i <= 2; i++) for (int j = -2; j <= 2; j++) { float k = exp(-float(i * i + j * j) / 4.5); s += luma(texture2D(src, vUv + vec2(i, j) * 1.5 * px).rgb) * k; w += k; }
+  float ls = sqrt(s / w), lm = sqrt(texture2D(mid, vUv).r), lb = sqrt(texture2D(low, vUv).r);
+  float h = clamp(0.5 + (ls - lm) / (lb + 0.06) * 1.05, 0.0, 1.0);
+  h = smoothstep(0.0, 1.0, h);
+  gl_FragColor = vec4(h, 0.62 - 0.32 * h, 0.0, 1.0); }`, { src: { value: null }, low: { value: null }, mid: { value: null }, px: { value: new THREE.Vector2() } });
+const normalMat = fsMat(`uniform sampler2D src; uniform vec2 px; uniform float strength; varying vec2 vUv;
+  float H(float x, float y){ return texture2D(src, vUv + vec2(x, y) * px).r; }
+  void main(){
+    float gx = (H(1.,-1.) + 2.0 * H(1.,0.) + H(1.,1.)) - (H(-1.,-1.) + 2.0 * H(-1.,0.) + H(-1.,1.));
+    float gy = (H(-1.,1.) + 2.0 * H(0.,1.) + H(1.,1.)) - (H(-1.,-1.) + 2.0 * H(0.,-1.) + H(1.,-1.));
+    vec3 n = normalize(vec3(-gx * strength, -gy * strength, 1.0));
+    gl_FragColor = vec4(n * 0.5 + 0.5, 1.0); }`, { src: { value: null }, px: { value: new THREE.Vector2() }, strength: { value: 1.3 } });
+const smallMat = fsMat(`uniform sampler2D src; uniform vec2 px; varying vec2 vUv;
+  void main(){ float s = 0.0; for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++) s += texture2D(src, vUv + (vec2(i, j) - 1.5) / 4.0 * px).r;
+  gl_FragColor = vec4(vec3(s / 16.0), 1.0); }`, { src: { value: null }, px: { value: new THREE.Vector2() } });
+const lowA = rt(48, 36), lowB = rt(48, 36), midA = rt(160, 120), midB = rt(160, 120);
+function reliefMaps(photo) {
+  const blurInto = (from, tmp, w, h, rad) => {
+    downMat.uniforms.src.value = photo; downMat.uniforms.px.value.set(1 / w, 1 / h); runPass(downMat, tmp);
+    blurMat.uniforms.src.value = tmp.texture; blurMat.uniforms.px.value.set(1 / w, 1 / h); blurMat.uniforms.rad.value = rad; runPass(blurMat, from);
+  };
+  blurInto(lowA, lowB, 48, 36, 4);
+  blurInto(midA, midB, 160, 120, 2.2);
+  const mip = { generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter, type: THREE.UnsignedByteType };
+  const albedo = rt(RW, RH, { ...mip, colorSpace: THREE.SRGBColorSpace }), hr = rt(RW, RH, mip), nrm = rt(RW, RH, mip), disp = rt(160, 120, { type: THREE.UnsignedByteType });
+  albedoMat.uniforms.src.value = photo; albedoMat.uniforms.low.value = lowA.texture; runPass(albedoMat, albedo);
+  Object.assign(heightMat.uniforms, { src: { value: photo }, low: { value: lowA.texture }, mid: { value: midA.texture } }); heightMat.uniforms.px.value.set(1 / RW, 1 / RH); runPass(heightMat, hr);
+  normalMat.uniforms.src.value = hr.texture; normalMat.uniforms.px.value.set(1 / RW, 1 / RH); runPass(normalMat, nrm);
+  smallMat.uniforms.src.value = hr.texture; smallMat.uniforms.px.value.set(1 / 160, 1 / 120); runPass(smallMat, disp);
+  for (const t of [albedo, hr, nrm]) t.texture.anisotropy = 8;
+  return { albedo: albedo.texture, hr: hr.texture, normal: nrm.texture, disp: disp.texture };
+}
+const loader = new THREE.TextureLoader();
+// Gilded reliefs: delit colour, a normal map, and real displacement on a finely divided plane.
+const relief = [1, 2, 3, 4, 5, 6, 7].map((n) => {
+  const m = withEnv(new THREE.MeshStandardMaterial({ color: '#ffffff', metalness: 0.88, roughness: 1, emissive: '#ffffff', emissiveIntensity: 0, side: THREE.DoubleSide, visible: false }), 0.55);
+  hallEmis.push([m, 0.05]);
+  loader.load(`tex/p${n}.jpg`, (t) => {
+    t.colorSpace = THREE.SRGBColorSpace;
+    const r = reliefMaps(t);
+    Object.assign(m, { map: r.albedo, emissiveMap: r.albedo, normalMap: r.normal, roughnessMap: r.hr, displacementMap: r.disp, displacementScale: 0.16, displacementBias: -0.03, visible: true });
+    m.normalScale.set(1, 1); m.needsUpdate = true; dirty = true; precompile();
+  });
+  return m;
+});
+
+// A relief sunk into three gold steps. `o` is the wall point under the panel centre,
+// `along` runs along the wall, `n` points into the hall.
+const UP = new THREE.Vector3(0, 1, 0);
+function ring(w, h, t, depth) {
+  const sh = new THREE.Shape(); sh.moveTo(-w / 2, -h / 2); sh.lineTo(w / 2, -h / 2); sh.lineTo(w / 2, h / 2); sh.lineTo(-w / 2, h / 2); sh.closePath();
+  const ho = new THREE.Path(); ho.moveTo(-w / 2 + t, -h / 2 + t); ho.lineTo(-w / 2 + t, h / 2 - t); ho.lineTo(w / 2 - t, h / 2 - t); ho.lineTo(w / 2 - t, -h / 2 + t); ho.closePath(); sh.holes.push(ho);
+  return new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: false });
+}
+function uplight(x, y, z) { const l = new THREE.PointLight('#ffae42', 0, 11, 1.5); l.position.set(x, y, z); hall.add(l); LIGHTS.push([l, 16]); }
+function panel(o, along, n, w, h, y, mat) {
+  // Keep the basis right-handed so the relief faces into the hall.
+  const a = new THREE.Vector3().crossVectors(along, UP).dot(n) < 0 ? along.clone().negate() : along;
+  const at = (u, v, d) => [o.x + a.x * u + n.x * d, y + v, o.z + a.z * u + n.z * d];
+  const f = 0.42, basis = new THREE.Matrix4().makeBasis(a, UP, n).setPosition(o.x, y, o.z);
+  [[0, 0.3], [1, 0.2], [2, 0.1]].forEach(([k, d]) => {
+    const m = new THREE.Mesh(ring(w + 2 * f - k * 2 * f / 3 + 0.02, h + 2 * f - k * 2 * f / 3 + 0.02, f / 3 + 0.02, d), gold);
+    m.matrixAutoUpdate = false; m.matrix.copy(basis); hall.add(m);
+  });
+  // The relief itself: about 2.2 cm of plane per segment, displaced up to 16 cm.
+  const p = new THREE.Mesh(new THREE.PlaneGeometry(w, h, 176, 132), mat);
+  p.matrixAutoUpdate = false; p.matrix.copy(basis).multiply(new THREE.Matrix4().makeTranslation(0, 0, 0.05)); hall.add(p);
+  // A dark recess behind it, so the displaced edges never show the wall.
+  const back = new THREE.Mesh(new THREE.PlaneGeometry(w + 0.04, h + 0.04), new THREE.MeshBasicMaterial({ color: '#0b0703' }));
+  back.matrixAutoUpdate = false; back.matrix.copy(basis).multiply(new THREE.Matrix4().makeTranslation(0, 0, 0.01)); hall.add(back);
+  for (const u of [-w / 2 - f - 0.35, w / 2 + f + 0.35]) quad(at(u - 0.8, -h / 2 - 1.1, 0.42), at(u + 0.8, -h / 2 - 1.1, 0.42), at(u + 0.8, h / 2 - 1.2, 0.42), at(u - 0.8, h / 2 - 1.2, 0.42), haloMat);
+  uplight(...at(0, -h / 2 - 0.5, 1.0));
+}
+// A moulding: a profile (u out of the wall, v up) run along a side wall from z0 to z1.
+function moulding(s, y, pts, z0, z1, mat) {
+  const sh = new THREE.Shape(pts.map(([u, v]) => new THREE.Vector2(u, v)));
+  const m = new THREE.Mesh(new THREE.ExtrudeGeometry(sh, { depth: z1 - z0, bevelEnabled: false }), mat);
+  m.position.set(s * HW, y, s > 0 ? z1 : z0);
+  if (s > 0) m.rotation.y = Math.PI;
+  hall.add(m); return m;
+}
+const DADO = [[0, 0], [0.05, 0], [0.075, 0.025], [0.075, 0.055], [0.05, 0.075], [0.035, 0.075], [0.035, 0.11], [0, 0.13]];
+const STRING = [[0, 0], [0.04, 0], [0.04, 0.04], [0.085, 0.04], [0.085, 0.085], [0.13, 0.085], [0.13, 0.17], [0, 0.17]];
+const CORNICE = [[0, 0], [0.06, 0], [0.06, 0.06], [0.13, 0.09], [0.2, 0.17], [0.22, 0.2], [0.22, 0.32], [0, 0.32]];
+// A raised plaster panel below the dado rail, between two piers.
+function wainscot(s, zc, w) {
+  const r = 0.06, hh = 1.5, sh = new THREE.Shape();
+  sh.moveTo(-w / 2 + r, 0); sh.lineTo(w / 2 - r, 0); sh.quadraticCurveTo(w / 2, 0, w / 2, r); sh.lineTo(w / 2, hh - r); sh.quadraticCurveTo(w / 2, hh, w / 2 - r, hh);
+  sh.lineTo(-w / 2 + r, hh); sh.quadraticCurveTo(-w / 2, hh, -w / 2, hh - r); sh.lineTo(-w / 2, r); sh.quadraticCurveTo(-w / 2, 0, -w / 2 + r, 0);
+  const m = new THREE.Mesh(new THREE.ExtrudeGeometry(sh, { depth: 0.02, bevelEnabled: true, bevelThickness: 0.025, bevelSize: 0.05, bevelSegments: 3 }), wainscotMat);
+  m.position.set(s * (HW - 0.03), 0.45, zc); m.rotation.y = -s * Math.PI / 2; hall.add(m);
+}
+const wainscotMat = plaster(0.5, '#5c4420', 0.5);
+const ventMat = new THREE.MeshBasicMaterial({ color: '#070503' });
+const PIERS = [3.75, 8.85, 13.95, 19.05, 24.15];
+for (const s of [-1, 1]) {
+  const x = s * HW, wallMat = plaster(6);
+  // Side wall, fluted piers, mouldings, peg band, palm-fan cove.
+  quad([x, 0, HZ0], [x, 0, HZ1], [x, WALL_H, HZ1], [x, WALL_H, HZ0], wallMat);
+  quad([x - s * 0.05, WALL_H - 0.55, HZ0], [x - s * 0.05, WALL_H - 0.55, HZ1], [x - s * 0.05, WALL_H, HZ1], [x - s * 0.05, WALL_H, HZ0], pegMat);
+  quad([x - s * 0.1, WALL_H, HZ0], [x - s * 0.1, WALL_H, HZ1], [x - s * 1.3, CEIL, HZ1], [x - s * 1.3, CEIL, HZ0], fanMat);
+  moulding(s, 2.05, DADO, HZ0, HZ1, trim);
+  moulding(s, 6.98, STRING, HZ0, HZ1, trim);
+  moulding(s, WALL_H - 0.55 - 0.32, CORNICE, HZ0, HZ1, trim);
+  const n = new THREE.Vector3(-s, 0, 0), along = new THREE.Vector3(0, 0, s);
+  const tex = s > 0 ? [0, 1, 2, 6] : [3, 4, 5, 0];
+  [6.3, 11.4, 16.5, 21.6].forEach((z, k) => panel(new THREE.Vector3(x, 0, z), along, n, 4.0, 3.0, 4.9, relief[tex[k]]));
+  PIERS.slice(0, -1).forEach((z, k) => wainscot(s, (z + PIERS[k + 1]) / 2, 4.1));
+  PIERS.forEach((z) => {
+    const pier = new THREE.Mesh(new THREE.BoxGeometry(0.4, WALL_H - 0.55, 0.62), pierMat); pier.position.set(x - s * 0.2, (WALL_H - 0.55) / 2, z); hall.add(pier);
+    quad([x - s * 0.42, 7.75, z - 0.2], [x - s * 0.42, 7.75, z + 0.2], [x - s * 0.42, 8.2, z + 0.2], [x - s * 0.42, 8.2, z - 0.2], ventMat);
+  });
+  // Splayed wall beside the screen.
+  const a = new THREE.Vector3(x, 0, HZ0), b = new THREE.Vector3(s * 5.4, 0, -0.7), mid = a.clone().add(b).multiplyScalar(0.5);
+  const dir = b.clone().sub(a).normalize(), nn = new THREE.Vector3(-dir.z * s, 0, dir.x * s);
+  if (nn.z < 0) nn.negate();
+  quad([a.x, 0, a.z], [b.x, 0, b.z], [b.x, CEIL, b.z], [a.x, CEIL, a.z], plaster(2));
+  panel(mid, dir, nn, 3.4, 2.55, 4.7, relief[s > 0 ? 4 : 6]);
+}
+
+// The balcony: a curved gold front over the back rows, with its own seats.
+const balcony = new THREE.Group(); hall.add(balcony);
+{
+  const NB = 32, pos = [], uv = [], idx = [], under = [], uidx = [];
+  for (let i = 0; i <= NB; i++) {
+    const x = -HW + 2 * HW * i / NB, z = BAL.z(x);
+    pos.push(x, BAL.y, z, x, BAL.top, z); uv.push(i / NB * 10, 0, i / NB * 10, 1);
+    under.push(x, BAL.y, z, x, BAL.y, HZ1);
+    if (i < NB) { const a = i * 2; idx.push(a, a + 2, a + 3, a, a + 3, a + 1); uidx.push(a, a + 2, a + 3, a, a + 3, a + 1); }
+  }
+  const front = new THREE.BufferGeometry(); front.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); front.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); front.setIndex(idx); front.computeVertexNormals();
+  const bandTex = canvasTex(128, 128, (g, w, h) => {
+    g.fillStyle = lin(g, 0, h, [[0, '#f7d267'], [0.5, '#b98a2a'], [1, '#6a4a14']]); g.fillRect(0, 0, w, h);
+    [14, 30, 98, 112].forEach((y) => { g.fillStyle = 'rgba(40,24,4,.55)'; g.fillRect(0, y, w, 3); g.fillStyle = 'rgba(255,240,180,.5)'; g.fillRect(0, y + 3, w, 2); });
+    g.fillStyle = 'rgba(60,36,6,.5)'; for (let k = 0; k < 4; k++) { g.beginPath(); g.moveTo(16 + k * 32, 90); g.lineTo(4 + k * 32, 42); g.lineTo(28 + k * 32, 42); g.closePath(); g.fill(); }
+  });
+  bandTex.wrapS = THREE.RepeatWrapping;
+  const bandMat = withEnv(new THREE.MeshStandardMaterial({ map: bandTex, metalness: 0.7, roughness: 0.4, emissive: '#ffffff', emissiveMap: bandTex, side: THREE.DoubleSide }), 0.4); hallEmis.push([bandMat, 0.3]);
+  balcony.add(new THREE.Mesh(front, bandMat));
+  const ug = new THREE.BufferGeometry(); ug.setAttribute('position', new THREE.Float32BufferAttribute(under, 3)); ug.setIndex(uidx); ug.computeVertexNormals();
+  balcony.add(new THREE.Mesh(ug, new THREE.MeshStandardMaterial({ color: '#2a1c0c', roughness: 0.9, side: THREE.DoubleSide })));
+  const lip = []; for (let i = 0; i <= NB; i++) { const x = -HW + 2 * HW * i / NB, z = BAL.z(x) - 0.02; lip.push(x, BAL.y - 0.02, z, x, BAL.y + 0.07, z); }
+  const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(lip, 3)); lg.setIndex(idx);
+  const lipMat = new THREE.MeshBasicMaterial({ color: '#ffd27a', toneMapped: false, side: THREE.DoubleSide }); hallMats.push(lipMat); lipMat.userData.base = new THREE.Color('#ffd27a');
+  balcony.add(new THREE.Mesh(lg, lipMat));
+  BALC.forEach((_, k) => { const z0 = BAL.z(HW * 0.8) + 0.8 + k * 0.92 - 0.45, d = HZ1 - z0, top = 0.4 + k * 0.42;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(2 * HW, top, d), stepMat); m.position.set(0, BAL.y + top / 2, z0 + d / 2); balcony.add(m); });
+}
+
+// Wall behind the screen, back wall, ceiling, sunburst.
+quad([-5.4, 0, -0.7], [5.4, 0, -0.7], [5.4, CEIL, -0.7], [-5.4, CEIL, -0.7], plaster(3));
+quad([-HW, 0, HZ1], [HW, 0, HZ1], [HW, CEIL, HZ1], [-HW, CEIL, HZ1], plaster(4));
+quad([-HW, CEIL, -0.7], [HW, CEIL, -0.7], [HW, CEIL, HZ1], [-HW, CEIL, HZ1], glowMat(ceilTex));
+const SUN_Z = 0.5;
+quad([-5.5, CEIL - 0.04, SUN_Z + 5.5], [5.5, CEIL - 0.04, SUN_Z + 5.5], [5.5, CEIL - 0.04, SUN_Z - 5.5], [-5.5, CEIL - 0.04, SUN_Z - 5.5], glowMat(sunTex, { transparent: true }));
+const dome = new THREE.Mesh(new THREE.SphereGeometry(1.75, 32, 16, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), glowMat(canvasTex(8, 64, (g, w, h) => { g.fillStyle = lin(g, 0, h, [[0, '#ffefa8'], [1, '#ffab1c']]); g.fillRect(0, 0, w, h); })));
+dome.scale.y = 0.32; dome.position.set(0, CEIL - 0.03, SUN_Z); hall.add(dome);
+{ const m = new THREE.Mesh(new THREE.BoxGeometry(10.2, SCREEN.y - SCREEN.h / 2, 0.9), new THREE.MeshStandardMaterial({ color: '#090604', roughness: 1 })); m.position.set(0, (SCREEN.y - SCREEN.h / 2) / 2, -0.2); hall.add(m); }
+
+// One chair, merged, instanced for every seat.
+function chairGeometry() {
+  const tint = (geo, v) => { const n = geo.attributes.position.count, a = new Float32Array(n * 3).fill(v); geo.setAttribute('color', new THREE.BufferAttribute(a, 3)); return geo; };
+  const cushion = new RoundedBoxGeometry(0.46, 0.14, 0.48, 3, 0.05).translate(0, 0.45, -0.02);
+  const back = new RoundedBoxGeometry(0.46, 0.72, 0.14, 3, 0.06).rotateX(0.14).translate(0, 0.8, 0.28);
+  const arm = new RoundedBoxGeometry(0.06, 0.09, 0.44, 2, 0.03).translate(-0.25, 0.67, 0.02);
+  const armLeg = new THREE.BoxGeometry(0.05, 0.3, 0.3).toNonIndexed().translate(-0.25, 0.5, 0.06);
+  const base = new THREE.BoxGeometry(0.4, 0.4, 0.36).toNonIndexed().translate(0, 0.2, 0.04);
+  return mergeGeometries([tint(cushion, 1), tint(back, 1), tint(arm, 0.5), tint(armLeg, 0.12), tint(base, 0.1)]);
+}
+const chairMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.82, sheen: 0.5, sheenRoughness: 0.45, sheenColor: new THREE.Color('#ffb65c') });
+const chairs = new THREE.InstancedMesh(chairGeometry(), chairMat, N); chairs.frustumCulled = false; scene.add(chairs);
+
+/* ---------- The relief map: the seating as a lit 3D model, seen from above at an angle ----------
+   Stalls keep their real rake. The balcony keeps its real height but is drawn behind the stalls,
+   so no seat hides another; the flight moves it back over the rear stalls. */
+const BAL_SHIFT = 8.6;
+// On the map the screen stands just in front of row A, smaller, so the house fills the frame; the flight puts it back.
+const MAP_SCREEN = { y: 1.6, z: 3.4, s: 0.62 };
+const mapPos = (st) => st.area === 'Balcony' ? new THREE.Vector3(st.x, st.y, st.z + BAL_SHIFT) : new THREE.Vector3(st.x, st.y, st.z);
+seats.forEach((st) => { st.mp = mapPos(st); });
+const mapLights = new THREE.Group(); scene.add(mapLights);
+const mapHemi = new THREE.HemisphereLight('#e8e6ff', '#1a1714', 0), mapKey = new THREE.DirectionalLight('#fff3e4', 0);
+mapKey.position.set(-6, 22, 30); mapLights.add(mapHemi, mapKey, mapKey.target); mapKey.target.position.set(0, 0, 16);
+const MAP_LIGHTS = [[mapHemi, 1.15], [mapKey, 2.1]];
+// The balcony tier for the map: one stepped block per row, behind the stalls.
+const tierMat = new THREE.MeshStandardMaterial({ color: '#2a1610', roughness: 1, transparent: true });
+const tiers = new THREE.Group(); scene.add(tiers);
+rows.filter((r) => r.seats[0].area === 'Balcony').forEach((r, k) => {
+  const xs = r.seats.map((s) => s.x), z0 = Math.min(...r.seats.map((s) => s.mp.z)) - 0.45, top = r.seats[0].y;
+  const w = Math.max(...xs) - Math.min(...xs) + 1.4, d = 0.95, h = top - 4.2;
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), tierMat); m.position.set((Math.max(...xs) + Math.min(...xs)) / 2, top - h / 2, z0 + d / 2 + 0.05); tiers.add(m);
+});
+{ const front = new THREE.Mesh(new THREE.BoxGeometry(15.6, 1.1, 0.12), new THREE.MeshStandardMaterial({ color: '#b98a2a', metalness: 0.6, roughness: 0.4, transparent: true }));
+  front.position.set(0, BAL.y + 0.15, BAL.z(0) + BAL_SHIFT + 0.15); tiers.add(front); }
+const tierMats = [tierMat, tiers.children[tiers.children.length - 1].material];
+
+// Seat colours on the map. Free reads light and ready; taken is dark and quiet; yours is the accent.
+const C = {
+  free: new THREE.Color('#c9c8d6'), hover: new THREE.Color('#ffffff'), taken: new THREE.Color('#2e2d36'),
+  sel: new THREE.Color('#5fd39c'), chair: new THREE.Color('#2c2b33'),
+};
+// Rings on the floor under a seat: one for keyboard focus, one for the chosen seat.
+const ringMat = (color, opacity) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, toneMapped: false, depthWrite: false });
+const focusRing = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.58, 48).rotateX(-Math.PI / 2), ringMat('#ffffff', 0.95)); focusRing.material.depthTest = false; focusRing.renderOrder = 5; focusRing.visible = false; scene.add(focusRing);
+const selRing = new THREE.Mesh(new THREE.RingGeometry(0.36, 0.52, 40).rotateX(-Math.PI / 2), ringMat('#5fd39c', 0.55)); selRing.visible = false; scene.add(selRing);
+const _m = new THREE.Matrix4(), _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _c = new THREE.Color();
+const _Y = new THREE.Vector3(0, 1, 0);
+let morph = 0, pressed = -1, focused = -1;
+const prevCol = new Float32Array(N * 3); let fade = null; // cross-fade when the show changes
+const pops = new Map(); // seat -> start time of its select pop
+const springPop = (t) => 1 + 0.16 * Math.exp(-7 * t) * Math.sin(t * 15); // fast, front-loaded, settles in about 0.4 s
+function seatColour(st, out) {
+  const tk = taken(), isS = st.i === selected;
+  return out.copy(isS ? C.sel : tk.has(st.i) ? C.taken : st.i === hovered ? C.hover : C.free);
+}
+function paintSeats(now = performance.now()) {
+  const m = morph;
+  let animating = false;
+  for (const st of seats) {
+    seatColour(st, _c);
+    if (fade) { const k = smooth(0, 1, (now - fade.t0 - (st.row * 10)) / 200); if (k < 1) animating = true; _c.setRGB(prevCol[st.i * 3] + (_c.r - prevCol[st.i * 3]) * k, prevCol[st.i * 3 + 1] + (_c.g - prevCol[st.i * 3 + 1]) * k, prevCol[st.i * 3 + 2] + (_c.b - prevCol[st.i * 3 + 2]) * k); }
+    if (st.i !== selected) _c.lerp(C.chair, m);
+    chairs.setColorAt(st.i, _c);
+    _p.copy(st.mp).lerp(_s.set(st.x, st.y, st.z), m);
+    let k = 1;
+    if (pops.has(st.i)) { const t = (now - pops.get(st.i)) / 1000; if (t < 0.45) { k = springPop(t); animating = true; } else pops.delete(st.i); }
+    if (st.i === pressed) k *= 0.92;
+    const lift = st.i === hovered && m < 0.5 ? 0.06 : 0;
+    _q.setFromAxisAngle(_Y, st.yaw);
+    chairs.setMatrixAt(st.i, _m.compose(_p.setY(_p.y + lift), _q, _s.set(k, k, k)));
+  }
+  chairs.instanceMatrix.needsUpdate = true; chairs.instanceColor.needsUpdate = true;
+  if (fade && !animating) fade = null;
+  const place = (ring, i, h) => { const st = seats[i]; ring.visible = i >= 0 && m < 0.5; if (ring.visible) ring.position.copy(st.mp).lerp(_s.set(st.x, st.y, st.z), m).add(_s.set(0, h, 0)); };
+  place(focusRing, focused, 0.5); place(selRing, selected, 0.03);
+  dirty = true; return animating;
+}
+function startFade() {
+  for (const st of seats) { seatColour(st, _c); prevCol.set([_c.r, _c.g, _c.b], st.i * 3); }
+  fade = reduce.matches ? null : { t0: performance.now() };
+}
+
+/* ---------- Camera: an orbit over the relief, and the flight into a seat ---------- */
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+const ease = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const HFOV_VIEW = THREE.MathUtils.degToRad(70), MAP_FOV = 30;
+let aspect = 0.46;
+const orbit = { yaw: 0, elev: 0.8, dist: 40, target: new THREE.Vector3(0, 2, 17), fit: null };
+const DEFAULT = { yaw: 0, elev: 0.8 };
+function orbitCam(o, cam = new THREE.PerspectiveCamera(MAP_FOV, aspect, 0.1, 400)) {
+  cam.fov = MAP_FOV; cam.aspect = aspect;
+  cam.position.set(o.target.x + o.dist * Math.sin(o.yaw) * Math.cos(o.elev), o.target.y + o.dist * Math.sin(o.elev), o.target.z + o.dist * Math.cos(o.yaw) * Math.cos(o.elev));
+  cam.up.set(0, 1, 0); cam.lookAt(o.target); cam.updateMatrixWorld(); cam.updateProjectionMatrix(); return cam;
+}
+const mapPose = () => { const c = orbitCam(orbit); return { pos: c.position.clone(), quat: c.quaternion.clone(), tan: Math.tan(THREE.MathUtils.degToRad(MAP_FOV) / 2) }; };
+// The visible map region in pixels: between the header and the slot under the map.
+const region = () => { const W = phone.clientWidth, H = phone.clientHeight, top = $('map').offsetTop, h = $('map').offsetHeight; return { W, H, x0: 12, x1: W - 12, y0: top + 12, y1: top + h - 12 }; };
+const BOUNDS = (() => { const pts = []; for (const st of seats) { pts.push(st.mp.clone(), st.mp.clone().add(new THREE.Vector3(0, 1.05, 0))); } pts.push(new THREE.Vector3(-MAP_SCREEN.s * SCREEN.w / 2, MAP_SCREEN.y + MAP_SCREEN.s * SCREEN.h / 2, MAP_SCREEN.z), new THREE.Vector3(MAP_SCREEN.s * SCREEN.w / 2, MAP_SCREEN.y - MAP_SCREEN.s * SCREEN.h / 2, MAP_SCREEN.z)); return pts; })();
+const _v = new THREE.Vector3();
+function projectedBox(o, R) {
+  const cam = orbitCam(o); let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+  for (const p of BOUNDS) { _v.copy(p).project(cam); const x = (_v.x + 1) / 2 * R.W, y = (1 - _v.y) / 2 * R.H; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  return { x0, x1, y0, y1 };
+}
+// Fit the whole house in the visible region: search the distance, then centre the target, twice.
+function fitOrbit(o = { ...DEFAULT, target: new THREE.Vector3(0, 2, 17), dist: 40 }) {
+  const R = region();
+  for (let pass = 0; pass < 3; pass++) {
+    let lo = 5, hi = 200;
+    for (let i = 0; i < 26; i++) { o.dist = (lo + hi) / 2; const b = projectedBox(o, R); (b.x1 - b.x0 <= R.x1 - R.x0 && b.y1 - b.y0 <= R.y1 - R.y0) ? hi = o.dist : lo = o.dist; }
+    o.dist = hi;
+    const b = projectedBox(o, R), cam = orbitCam(o), wpp = 2 * o.dist * Math.tan(THREE.MathUtils.degToRad(MAP_FOV) / 2) / R.H;
+    const dx = ((R.x0 + R.x1) / 2 - (b.x0 + b.x1) / 2) * wpp, dy = ((R.y0 + R.y1) / 2 - (b.y0 + b.y1) / 2) * wpp;
+    const right = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 0), up = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 1);
+    o.target.addScaledVector(right, -dx).addScaledVector(up, dy);
+  }
+  o.fit = o.dist; return o;
+}
+function viewPose(st) {
+  const pos = new THREE.Vector3(st.x, st.y + 1.2, st.z - 0.06), tan = Math.tan(HFOV_VIEW / 2) / aspect;
+  const pitch = Math.atan2(SCREEN.y - pos.y, pos.z) - Math.atan(0.42 * tan);
+  const yaw = -0.5 * Math.atan2(-st.x, st.z);
+  return { pos, quat: new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ')), tan };
+}
+let pose0 = null, pose1 = null, flight = 0, look = { yaw: 0, pitch: 0 };
+const _e = new THREE.Euler(0, 0, 0, 'YXZ'), _lq = new THREE.Quaternion();
+function apply(s) {
+  flight = s;
+  const a = pose0, b = pose1 || pose0;
+  // The camera rises a little out of the overview, then glides down to the eye point and turns to the screen.
+  camera.position.lerpVectors(a.pos, b.pos, smooth(0, 0.85, s));
+  camera.quaternion.slerpQuaternions(a.quat, b.quat, smooth(0.2, 1, s));
+  if (s > 0 && (look.yaw || look.pitch)) camera.quaternion.multiply(_lq.setFromEuler(_e.set(look.pitch * s, look.yaw * s, 0)));
+  const tan = a.tan * Math.pow(b.tan / a.tan, smooth(0.25, 1, s));
+  camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(tan)); camera.aspect = aspect; camera.near = 0.08; camera.far = 400;
+  camera.updateProjectionMatrix();
+  const lit = smooth(0.15, 0.75, s);
+  for (const [l, v] of LIGHTS) l.intensity = v * lit;
+  for (const [l, v] of MAP_LIGHTS) l.intensity = v * (1 - lit);
+  for (const m of hallMats) m.userData.base ? m.color.copy(m.userData.base).multiplyScalar(lit) : m.color.setScalar(lit);
+  for (const [m, v] of hallEmis) m.emissiveIntensity = v * lit;
+  for (const [m, v] of hallEnv) m.envMapIntensity = v * lit;
+  // The hall appears only once the camera is under its ceiling, so the flight never shows the roof.
+  hall.visible = lit > 0.002 && camera.position.y < CEIL - 0.3; floor.visible = lit > 0.002;
+  screenMat.opacity = 1;
+  const sm = smooth(0.05, 0.7, s), sc = MAP_SCREEN.s + (1 - MAP_SCREEN.s) * sm;
+  screen.position.set(0, MAP_SCREEN.y + (SCREEN.y - MAP_SCREEN.y) * sm, MAP_SCREEN.z * (1 - sm)); screen.scale.setScalar(sc);
+  chairMat.sheen = 0.5 * lit;
+  const m = smooth(0.1, 0.7, s);
+  tiers.visible = m < 0.98; for (const tm of tierMats) tm.opacity = 1 - m;
+  if (m !== morph) { morph = m; paintSeats(); }
+  mapUi.style.opacity = 1 - smooth(0, 0.3, s);
+  dirty = true;
+}
+
+/* ---------- Seats in the DOM: a real, focusable list for keyboards and screen readers ---------- */
+const btns = [], rowLabels = [];
+rows.forEach((r) => { const el = document.createElement('span'); el.className = 'rl'; el.textContent = r.L; el.setAttribute('aria-hidden', 'true'); $('map').append(el); rowLabels.push(el); });
+const tip = document.createElement('div'); tip.className = 'tip'; tip.setAttribute('aria-hidden', 'true'); $('map').append(tip);
+for (const st of seats) {
+  const b = document.createElement('button'); b.type = 'button'; plan.append(b); btns.push(b);
+  b.addEventListener('focus', () => { focused = st.i; paintSeats(); showTip(st.i); });
+  b.addEventListener('blur', () => { if (focused === st.i) { focused = -1; paintSeats(); hideTip(); } });
+  b.addEventListener('click', () => { if (state === 'map') pickSeat(st.i); });
+  b.addEventListener('keydown', (e) => {
+    const tk = taken(), row = rows[st.row];
+    let to = null;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      const d = e.key === 'ArrowLeft' ? -1 : 1; let k = row.seats.indexOf(st) + d;
+      while (k >= 0 && k < row.seats.length && tk.has(row.seats[k].i)) k += d;
+      to = row.seats[k];
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      const d = e.key === 'ArrowUp' ? -1 : 1;
+      for (let r = st.row + d; r >= 0 && r < rows.length && !to; r += d) {
+        let best = null; for (const o of rows[r].seats) if (!tk.has(o.i) && (!best || Math.abs(o.x - st.x) < Math.abs(best.x - st.x))) best = o;
+        to = best;
+      }
+    } else return;
+    e.preventDefault();
+    if (to) { rove(to.i); btns[to.i].focus(); }
+  });
+}
+function rove(i) { btns.forEach((b, n) => b.tabIndex = n === i ? 0 : -1); }
+function syncButtons() {
+  const tk = taken();
+  for (const st of seats) {
+    const b = btns[st.i], isT = tk.has(st.i);
+    b.setAttribute('aria-disabled', isT); b.setAttribute('aria-pressed', st.i === selected);
+    b.setAttribute('aria-label', `${st.name}, ${isT ? 'taken' : 'free, ' + money(PRICE)}`);
+  }
+  const first = seats.find((s) => !tk.has(s.i) && s.row > 6) || seats.find((s) => !tk.has(s.i));
+  rove(selected >= 0 && !tk.has(selected) ? selected : first.i);
+}
+// Screen position of a seat on the map, in phone pixels.
+function seatScreen(i, lift = 1.1) {
+  const st = seats[i]; _v.copy(st.mp).lerp(_s.set(st.x, st.y, st.z), morph); _v.y += lift; _v.project(camera);
+  return [(_v.x + 1) / 2 * phone.clientWidth, (1 - _v.y) / 2 * phone.clientHeight];
+}
+let tipFor = -1;
+function showTip(i) {
+  if (state !== 'map' || i < 0) return hideTip();
+  const st = seats[i], free = !taken().has(i);
+  if (tipFor !== i) { tip.innerHTML = `<strong>${st.name}</strong><span>${free ? `Free, ${money(PRICE)}` : 'Taken'}</span>`; tipFor = i; }
+  const [x, y] = seatScreen(i), r = $('map').getBoundingClientRect(), pr = phone.getBoundingClientRect();
+  const w = tip.offsetWidth, h = tip.offsetHeight, mx = 8;
+  let left = x - (r.left - pr.left) - w / 2, top = y - (r.top - pr.top) - h - 10, below = false;
+  if (top < mx) { top = y - (r.top - pr.top) + 34; below = true; }
+  left = Math.min(Math.max(mx, left), r.width - w - mx);
+  tip.style.translate = `${left}px ${top}px`; tip.dataset.below = below; tip.style.setProperty('--arrow-x', `${Math.min(Math.max(12, x - (r.left - pr.left) - left), w - 12)}px`);
+  tip.classList.add('on');
+}
+function hideTip() { tipFor = -1; tip.classList.remove('on'); }
+function layoutLabels() {
+  const show = state === 'map' && flight === 0;
+  rows.forEach((r, k) => {
+    const el = rowLabels[k]; el.hidden = !show; if (!show) return;
+    const st = r.seats[0]; _v.copy(st.mp).add(_s.set(-0.62, 0.35, 0)).project(camera);
+    const pr = $('map').getBoundingClientRect(), ph = phone.getBoundingClientRect();
+    el.style.translate = `${(_v.x + 1) / 2 * phone.clientWidth - (pr.left - ph.left)}px ${(1 - _v.y) / 2 * phone.clientHeight - (pr.top - ph.top)}px`;
+  });
+}
+
+/* ---------- Pointer: hover shows the tooltip, a click picks, a drag turns the model, pinch or Ctrl+wheel zooms ---------- */
+const raycaster = new THREE.Raycaster(), _ndc = new THREE.Vector2();
+function seatAt(cx, cy) {
+  const r = canvas.getBoundingClientRect(); _ndc.set((cx - r.left) / r.width * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(_ndc, camera); const hit = raycaster.intersectObject(chairs, false)[0]; return hit ? hit.instanceId : -1;
+}
+const pointers = new Map(); let gesture = null;
+const clampOrbit = () => { orbit.yaw = THREE.MathUtils.clamp(orbit.yaw, -0.85, 0.85); orbit.elev = THREE.MathUtils.clamp(orbit.elev, 0.42, 1.38); orbit.dist = THREE.MathUtils.clamp(orbit.dist, orbit.fit * 0.32, orbit.fit * 1.25); };
+const setOrbit = () => { clampOrbit(); pose0 = mapPose(); apply(0); if (tipFor >= 0) showTip(tipFor); };
+canvas.addEventListener('pointerdown', (e) => {
+  if (state === 'view') { drag = { x: e.clientX, y: e.clientY, yaw: look.yaw, pitch: look.pitch }; canvas.setPointerCapture(e.pointerId); return; }
+  if (state !== 'map') return;
+  canvas.setPointerCapture(e.pointerId); pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 1) { gesture = { kind: 'tap', x: e.clientX, y: e.clientY, yaw: orbit.yaw, elev: orbit.elev, seat: seatAt(e.clientX, e.clientY) }; if (gesture.seat >= 0 && !taken().has(gesture.seat)) { pressed = gesture.seat; paintSeats(); } }
+  else if (pointers.size === 2) { const [p, q] = [...pointers.values()]; gesture = { kind: 'pinch', d0: Math.hypot(p.x - q.x, p.y - q.y), dist: orbit.dist }; pressed = -1; paintSeats(); hideTip(); }
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (drag) { const k = 0.0045; look.yaw = THREE.MathUtils.clamp(drag.yaw + (e.clientX - drag.x) * k, -3.3, 3.3); look.pitch = THREE.MathUtils.clamp(drag.pitch + (e.clientY - drag.y) * k, -0.3, 0.35); apply(1); return; }
+  if (state !== 'map') return;
+  if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (gesture && gesture.kind === 'pinch' && pointers.size === 2) { const [p, q] = [...pointers.values()]; orbit.dist = gesture.dist * gesture.d0 / Math.max(10, Math.hypot(p.x - q.x, p.y - q.y)); setOrbit(); return; }
+  if (gesture && (gesture.kind === 'tap' || gesture.kind === 'orbit')) {
+    const dx = e.clientX - gesture.x, dy = e.clientY - gesture.y;
+    if (gesture.kind === 'tap' && Math.hypot(dx, dy) > 5) { gesture.kind = 'orbit'; pressed = -1; hideTip(); phone.dataset.drag = '1'; }
+    if (gesture.kind === 'orbit') { orbit.yaw = gesture.yaw - dx * 0.005; orbit.elev = gesture.elev + dy * 0.004; setOrbit(); }
+    return;
+  }
+  if (e.pointerType === 'mouse') {
+    const i = seatAt(e.clientX, e.clientY);
+    if (i !== hovered) { hovered = i >= 0 && !taken().has(i) ? i : -1; paintSeats(); }
+    canvas.style.cursor = i >= 0 && !taken().has(i) ? 'pointer' : 'grab';
+    if (i >= 0) showTip(i); else if (focused < 0) hideTip(); else showTip(focused);
+  }
+});
+const endPointer = (e) => {
+  if (drag) { drag = null; return; }
+  pointers.delete(e.pointerId);
+  if (!gesture) return;
+  if (gesture.kind === 'tap' && e.type === 'pointerup') { const i = seatAt(e.clientX, e.clientY); if (i >= 0 && i === gesture.seat) pickSeat(i, e.pointerType !== 'mouse'); }
+  if (pointers.size === 0) { gesture = null; delete phone.dataset.drag; }
+  else if (gesture.kind === 'pinch') gesture = { kind: 'done' };
+  if (pressed >= 0) { pressed = -1; paintSeats(); }
+};
+canvas.addEventListener('pointerup', endPointer); canvas.addEventListener('pointercancel', endPointer);
+canvas.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && hovered >= 0) { hovered = -1; paintSeats(); } if (focused < 0) hideTip(); });
+// Ctrl or Cmd with the wheel, and a trackpad pinch (a wheel event with ctrlKey), zoom; nothing else on the page moves.
+canvas.addEventListener('wheel', (e) => {
+  if (state !== 'map' || !(e.ctrlKey || e.metaKey)) return;
+  e.preventDefault(); orbit.dist *= Math.exp(Math.max(-60, Math.min(60, e.deltaY)) * 0.01); setOrbit();
+}, { passive: false });
+canvas.addEventListener('gesturestart', (e) => e.preventDefault());
+// Reset to the overview, eased; Shift+1 does the same.
+let orbitAnim = null;
+function resetOrbit() {
+  const to = fitOrbit(), from = { yaw: orbit.yaw, elev: orbit.elev, dist: orbit.dist, target: orbit.target.clone() };
+  if (reduce.matches) { Object.assign(orbit, to); setOrbit(); return; }
+  orbitAnim = { t0: performance.now(), dur: 420, step: (t) => { const k = 1 - Math.pow(1 - t, 3);
+    orbit.yaw = from.yaw + (to.yaw - from.yaw) * k; orbit.elev = from.elev + (to.elev - from.elev) * k; orbit.dist = from.dist + (to.dist - from.dist) * k;
+    orbit.target.lerpVectors(from.target, to.target, k); orbit.fit = to.fit; setOrbit(); } };
+}
+$('zoom').innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg>';
+$('zoom').setAttribute('aria-label', 'Show the whole hall');
+$('zoom').addEventListener('click', resetOrbit);
+addEventListener('keydown', (e) => {
+  if (state !== 'map' || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.shiftKey && (e.code === 'Digit1' || e.code === 'Digit0')) { e.preventDefault(); resetOrbit(); }
+  else if (e.key === '+' || e.key === '=') { e.preventDefault(); orbit.dist /= 1.4; setOrbit(); }
+  else if (e.key === '-' || e.key === '_') { e.preventDefault(); orbit.dist *= 1.4; setOrbit(); }
+});
+// Picking a free seat fills the slot below, pops the seat, then flies into it.
+function pickSeat(i, touch = false) {
+  if (taken().has(i)) { showTip(i); return; }
+  pops.set(i, performance.now()); select(i);
+  if (touch) hideTip();
+  setTimeout(() => { if (state === 'map' && selected === i) fly(true); }, reduce.matches ? 0 : 220);
+}
+
+/* ---------- Film, showtime and status ---------- */
+function renderFilms() {
+  $('films').innerHTML = FILMS.map((f, i) => `<button type="button" role="radio" aria-checked="${i === film}" tabindex="${i === film ? 0 : -1}" data-i="${i}">${f.title}<small>${f.runtime}${f.format ? `, ${f.format}` : ''}</small></button>`).join('');
+  const f = FILMS[film];
+  $('times').innerHTML = f.shows.map((s, i) => `<button type="button" role="radio" aria-checked="${i === showIdx}" tabindex="${i === showIdx ? 0 : -1}" data-i="${i}" aria-label="${s.time}, ${s.v}">${s.time}<small>${s.v}</small></button>`).join('');
+}
+function radioKeys(group, count, onPick) {
+  group.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) onPick(+b.dataset.i, false); });
+  group.addEventListener('keydown', (e) => {
+    const d = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key]; if (d === undefined) return;
+    e.preventDefault(); const n = count(), cur = +document.activeElement.dataset.i; onPick((cur + d + n) % n, true);
+  });
+}
+function changeShow(before) {
+  if (selected >= 0 && taken().has(selected)) { selected = -1; marked = -1; }
+  renderFilms(); syncButtons(); paintSeats(); setStatus(); hideTip();
+}
+radioKeys($('films'), () => FILMS.length, (i, kb) => { if (i !== film) { startFade(); film = i; showIdx = FILMS[i].def; marked = -1; changeShow(); } if (kb) $('films').children[film].focus(); });
+radioKeys($('times'), () => FILMS[film].shows.length, (i, kb) => { if (i !== showIdx) { startFade(); showIdx = i; marked = -1; changeShow(); } if (kb) $('times').children[showIdx].focus(); });
+
+const SEAT_ICON = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="3" y="2" width="10" height="7" rx="2"/><rect x="2" y="9" width="12" height="3" rx="1.2"/><rect x="3.5" y="12" width="1.6" height="2.5" rx=".6"/><rect x="10.9" y="12" width="1.6" height="2.5" rx=".6"/></svg>';
+function setStatus() {
+  const st = seats[selected], what = $('what'), sub = $('sub2'), sh = curShow();
+  what.classList.toggle('hint', !st);
+  if (!st) {
+    what.innerHTML = `${SEAT_ICON}Pick a seat`;
+    sub.textContent = '';
+  } else {
+    what.textContent = st.name;
+    sub.textContent = marked === selected ? `Selected for ${sh.time}. Nothing is booked.` : `${st.area}, ${sh.time}, ${money(PRICE)}`;
+  }
+  $('see').hidden = !st;
+  $('facts').textContent = `${money(PRICE)} per seat`;
+}
+function select(i) { selected = i; if (marked !== i) marked = -1; syncButtons(); paintSeats(); setStatus(); }
+
+function fillSheet(st) {
+  const fov = THREE.MathUtils.radToDeg(Math.atan((SCREEN.w / 2 - st.x) / st.z) + Math.atan((SCREEN.w / 2 + st.x) / st.z));
+  const dist = Math.hypot(st.z, st.y + 1.2 - SCREEN.y);
+  $('tag').textContent = fov > 60 ? 'Up close' : fov >= 34 ? 'Sweet spot' : 'Full picture';
+  $('seatName').textContent = st.name;
+  $('seatSub').textContent = `${st.area}, ${curShow().time}, ${money(PRICE)}`;
+  $('sDist').textContent = dist.toFixed(1).replace('.', ',') + ' m';
+  $('sFov').textContent = Math.round(fov) + '°';
+  $('sSide').textContent = Math.abs(st.x).toFixed(1).replace('.', ',') + ' m';
+  $('sSideL').textContent = Math.abs(st.x) < 0.05 ? 'from the centre' : st.x < 0 ? 'left of centre' : 'right of centre';
+  $('pick').textContent = marked === st.i ? 'Selected' : 'Select this seat';
+  const vx = X0, vw = X1 - X0, vz = Z0, vh = Z1 - Z0;
+  $('mini').setAttribute('viewBox', `${vx} ${vz} ${vw} ${vh}`);
+  const r = 0.17, path = seats.map((s) => s === st ? '' : `M${(s.mx - r).toFixed(2)} ${(s.mz - r).toFixed(2)}h${2 * r}v${2 * r}h${-2 * r}z`).join('');
+  $('mini').innerHTML = `<path d="M-8 ${Z0 + 0.9} Q0 ${Z0 - 0.1} 8 ${Z0 + 0.9}" fill="none" stroke="oklch(1 0 0 / 0.7)" stroke-width=".25"/>` +
+    `<path d="${path}" fill="oklch(1 0 0 / 0.2)"/><circle cx="${st.mx}" cy="${st.mz}" r=".75" fill="oklch(0.81 0.12 160)"/>`;
+}
+
+/* ---------- State ---------- */
+let state = 'map', anim = null, dirty = true, drag = null;
+function setState(s) { state = s; phone.dataset.state = s; mapUi.inert = s !== 'map'; viewUi.inert = s !== 'view'; }
+// Map to seat and back. A new flight starts from wherever the camera is, so it can be reversed mid-way.
+function fly(toView, then) {
+  if (toView && selected < 0) return;
+  setState('flying'); hideTip(); hovered = -1;
+  if (toView) { if (flight === 0) pose0 = mapPose(); pose1 = viewPose(seats[selected]); look.yaw = look.pitch = 0; fillSheet(seats[selected]); }
+  else viewUi.classList.remove('on');
+  const from = flight, to = toView ? 1 : 0;
+  const finish = () => {
+    apply(to); anim = null; setState(toView ? 'view' : 'map');
+    if (toView) { viewUi.classList.add('on'); $('seatName').focus({ preventScroll: true }); }
+    else { look.yaw = look.pitch = 0; layoutLabels(); then && then(); (btns[selected] || $('times').children[showIdx]).focus({ preventScroll: true }); }
+  };
+  if (reduce.matches) { canvas.style.opacity = 0; setTimeout(() => { finish(); canvas.style.opacity = 1; }, 180); return; }
+  anim = { t0: performance.now(), dur: (toView ? 1000 : 800) * Math.max(0.35, Math.abs(to - from)), from, to, toView, finish, sheet: false };
+}
+const leave = (then) => (state === 'view' || (state === 'flying' && anim && anim.toView)) && fly(false, then);
+$('back').addEventListener('click', () => leave());
+$('pick').addEventListener('click', () => { marked = selected; leave(() => setStatus()); });
+$('see').addEventListener('click', () => { if (state === 'map' && selected >= 0) fly(true); });
+addEventListener('keydown', (e) => { if (e.key === 'Escape') leave(); });
+
+/* ---------- Loop ---------- */
+function resize() {
+  const w = phone.clientWidth, h = phone.clientHeight; if (!w || !h) return;
+  phone.style.setProperty('--bar-h', $('bar').offsetHeight + 'px');
+  phone.style.setProperty('--top-h', document.querySelector('.top').offsetHeight + 'px');
+  aspect = w / h; renderer.setSize(w, h, false);
+  const wasFit = !orbit.fit || Math.abs(orbit.dist - orbit.fit) < 0.01 * orbit.fit;
+  const f = fitOrbit({ yaw: orbit.yaw, elev: orbit.elev, target: orbit.target.clone(), dist: orbit.dist });
+  if (wasFit) Object.assign(orbit, f); else orbit.fit = f.fit;
+  if (state === 'map' || !pose0) pose0 = mapPose();
+  if (pose1 && selected >= 0) pose1 = viewPose(seats[selected]);
+  apply(flight); layoutLabels();
+}
+new ResizeObserver(resize).observe(phone);
+new ResizeObserver(() => { const h = $('bar').offsetHeight + 'px'; if (phone.style.getPropertyValue('--bar-h') !== h) resize(); }).observe($('bar'));
+function tick(now) {
+  if (!document.hidden) {
+    if (orbitAnim) { const t = Math.min(1, (now - orbitAnim.t0) / orbitAnim.dur); orbitAnim.step(t); if (t >= 1) orbitAnim = null; }
+    if (anim) {
+      const t = Math.min(1, (now - anim.t0) / anim.dur), s = anim.from + (anim.to - anim.from) * ease(t);
+      apply(s);
+      if (anim.toView && !anim.sheet && t > 0.75) { anim.sheet = true; viewUi.classList.add('on'); }
+      if (t >= 1) anim.finish();
+    }
+    if (fade || pops.size) paintSeats(now);
+    if (dirty) { renderer.render(scene, camera); if (state === 'map') layoutLabels(); dirty = false; }
+  }
+  requestAnimationFrame(tick);
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) dirty = true; });
+// Compile the hall's shaders while the map shows, so the first flight does not stall.
+let compileTimer = 0;
+function precompile() {
+  clearTimeout(compileTimer);
+  compileTimer = setTimeout(() => { const v = [hall.visible, floor.visible]; hall.visible = floor.visible = true; renderer.compile(scene, camera); [hall.visible, floor.visible] = v; }, 60);
+}
+precompile();
+renderFilms(); resize(); select(-1); requestAnimationFrame(tick);
+window.__seatView = {
+  apply, select, seats, look, fly: (v) => fly(v), rows, orbit, setOrbit, resetOrbit, pickSeat,
+  seatScreen: (i) => seatScreen(i, 0.6),
+  // Test hook for the state sheet: force hover, press and focus marks.
+  marks(o) { if ('hovered' in o) hovered = o.hovered; if ('pressed' in o) pressed = o.pressed; if ('focused' in o) focused = o.focused; paintSeats(); },
+  // Test hook: view from any point, used to compare the walls before and after.
+  viewAt(x, y, z) { pose1 = viewPose({ x, y, z }); apply(1); },
+  get state() { return state; },
+};
+</script>
+</body>
+</html>

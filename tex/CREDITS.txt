@@ -1,0 +1,9 @@
+Relief textures p1 to p7 are crops of photos of the Grand Eldorado hall, UGC De Brouckère, Brussels.
+Photos by AdriMela, Wikimedia Commons, licence CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/).
+Source files: "Detail rechterwand zaal Grand Eldorado", "... 2", "... 3", "Rechterwand zaal Grand Eldorado",
+"Linkerwand zaal Grand Eldorado", "Detail linkerwand zaal Grand Eldorado", "... 2".
+Changes: cropped, resized, brightened. The crops carry the same licence.
+
+The photos in ref/ are the same AdriMela set, unchanged, used as the reference for the hall's shape and light.
+Hall facts (two balconies, gold reliefs by Maurice Wolf and Alfred Van Neste, sunburst ceiling) come from the
+Brussels heritage inventory (monument.heritage.brussels/fr/buildings/32382) and Cinema Treasures (theaters/4796).
